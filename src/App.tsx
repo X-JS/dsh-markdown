@@ -1,0 +1,400 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useStore, type RightPanel } from "./lib/store";
+import { api, type NoteMetaItem } from "./lib/api";
+import type { NoteMeta } from "./lib/cm";
+import FileTree from "./components/FileTree";
+import Editor from "./components/Editor";
+import Preview from "./components/Preview";
+import MindmapView from "./components/MindmapView";
+import GraphView from "./components/GraphView";
+import OutlinePanel from "./components/OutlinePanel";
+import BacklinkPanel from "./components/BacklinkPanel";
+import AiPanel from "./components/AiPanel";
+import QuickOpen from "./components/QuickOpen";
+import SettingsDialog, { resolveTheme } from "./components/SettingsDialog";
+
+export default function App() {
+  const vaultReady = useStore((s) => s.vaultReady);
+  const config = useStore((s) => s.config);
+  const viewMode = useStore((s) => s.viewMode);
+  const rightPanel = useStore((s) => s.rightPanel);
+  const sidebarVisible = useStore((s) => s.sidebarVisible);
+  const rightVisible = useStore((s) => s.rightVisible);
+  const rightWidth = useStore((s) => s.rightWidth);
+  const currentRel = useStore((s) => s.currentRel);
+  const dirty = useStore((s) => s.dirty);
+  const fileSize = useStore((s) => s.fileSize);
+  const content = useStore((s) => s.content);
+  const largeFile = useStore((s) => s.largeFile);
+  const treeVersion = useStore((s) => s.treeVersion);
+  const init = useStore((s) => s.init);
+  const setStore = useStore((s) => s.set);
+  const saveNow = useStore((s) => s.saveNow);
+  const bumpTree = useStore((s) => s.bumpTree);
+  const refreshLinks = useStore((s) => s.refreshLinks);
+  const reloadCurrent = useStore((s) => s.reloadCurrent);
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [newNote, setNewNote] = useState<string | null>(null); // null=关闭
+  const [filter, setFilter] = useState("");
+  const [notes, setNotes] = useState<NoteMetaItem[]>([]);
+  const [externalChange, setExternalChange] = useState(false);
+
+  // 主题
+  const theme = config?.theme ?? "auto";
+  const resolved = useMemo(() => resolveTheme(theme), [theme]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = resolved;
+  }, [resolved]);
+
+  // 初始化 + 系统主题变化监听
+  useEffect(() => {
+    void init();
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => {
+      if ((config?.theme ?? "auto") === "auto") {
+        document.documentElement.dataset.theme = resolveTheme("auto");
+      }
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [init]);
+
+  // 笔记列表缓存（补全 / wikilink 跳转用）
+  useEffect(() => {
+    if (!vaultReady) return;
+    void api.listAllNotes().then(setNotes).catch(() => {});
+  }, [vaultReady, treeVersion]);
+
+  const notesGetter = useCallback((): NoteMeta[] => notes, [notes]);
+
+  // 文件变化监听：刷新树；当前文件内容与磁盘不一致时提示重载（自己的保存不误报）
+  useEffect(() => {
+    if (!vaultReady) return;
+    const un = listen("fs-change", () => {
+      bumpTree();
+      refreshLinks();
+      const st = useStore.getState();
+      if (st.currentRel && !st.dirty) {
+        void api
+          .readFile(st.currentRel)
+          .then((r) => {
+            if (r.content !== useStore.getState().content) setExternalChange(true);
+          })
+          .catch(() => {});
+      }
+    });
+    return () => {
+      void un.then((u) => u());
+    };
+  }, [vaultReady, bumpTree, refreshLinks]);
+
+  // 新建笔记：在当前笔记所在目录（无则根目录）创建并打开
+  const createNewNote = async () => {
+    const title = (newNote ?? "").trim();
+    setNewNote(null);
+    if (!title) return;
+    try {
+      const dir = useStore.getState().currentRel?.split("/").slice(0, -1).join("/") ?? "";
+      const rel = await api.createNote(dir, title);
+      bumpTree();
+      refreshLinks();
+      await useStore.getState().openFile(rel);
+    } catch (e) {
+      alert(String(e));
+    }
+  };
+
+  // 标题栏拖动窗口（WKWebView 不支持 -webkit-app-region，须走 Tauri API）
+  const dragWindow = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("button")) return;
+    void getCurrentWindow().startDragging();
+  };
+
+  // 右栏拖宽
+  const startRightResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = rightWidth;
+    const onMove = (ev: MouseEvent) => {
+      const w = Math.max(240, Math.min(560, startW + (startX - ev.clientX)));
+      useStore.setState({ rightWidth: w });
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      localStorage.setItem("dsh.rightWidth", String(useStore.getState().rightWidth));
+      document.body.style.cursor = "";
+    };
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // 全局快捷键
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setQuickOpen((v) => !v);
+      }
+      if (mod && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void saveNow();
+      }
+      if (mod && e.key === "\\") {
+        e.preventDefault();
+        setStore({ sidebarVisible: !useStore.getState().sidebarVisible });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [saveNow, setStore]);
+
+  const jumpToLine = (line: number) => {
+    setStore({ viewMode: useStore.getState().viewMode === "preview" ? "split" : useStore.getState().viewMode });
+    // 滚动预览到标题：通过 anchor id
+    setTimeout(() => {
+      const el = document.querySelector(`.md-preview [data-line="${line}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!el) {
+        // 备选：滚动到对应 heading（按行号排序最近的标题）
+        const heads = document.querySelectorAll(".md-preview h1,.md-preview h2,.md-preview h3,.md-preview h4");
+        heads[0]?.scrollIntoView({ behavior: "smooth" });
+      }
+    }, 60);
+  };
+
+  const wordCount = useMemo(() => {
+    const cjk = (content.match(/[\u4e00-\u9fff]/g) || []).length;
+    const words = (content.replace(/[\u4e00-\u9fff]/g, " ").match(/[a-zA-Z0-9_]+/g) || []).length;
+    return cjk + words;
+  }, [content]);
+
+  const fmtSize = (n: number) =>
+    n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : n > 1024 ? `${(n / 1024).toFixed(0)} KB` : `${n} B`;
+
+  if (!vaultReady) {
+    return (
+      <div className="app-shell">
+        <WelcomeScreen />
+        {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      </div>
+    );
+  }
+
+  const showEditor = viewMode === "edit" || viewMode === "split";
+  const showPreview = viewMode === "preview" || viewMode === "split";
+
+  return (
+    <div className="app-shell">
+      {/* 标题栏（macOS Overlay） */}
+      <div className="titlebar-drag" data-tauri-drag-region onMouseDown={dragWindow}>
+        <div style={{ width: 68 }} />
+        <div className="no-drag">
+          <button className={`btn-icon${sidebarVisible ? " active" : ""}`} title="侧栏 ⌘\" onClick={() => setStore({ sidebarVisible: !sidebarVisible })}>☰</button>
+          <button className={`btn-icon${rightVisible ? " active" : ""}`} title="右侧面板" onClick={() => setStore({ rightVisible: !rightVisible })}>◫</button>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div className="no-drag" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+          {currentRel ? `${currentRel.split("/").pop()}${dirty ? " •" : ""}` : "DSH Markdown"}
+        </div>
+        <div style={{ flex: 1 }} />
+        <div className="no-drag">
+          <button className="btn-icon" title="快速打开 ⌘P" onClick={() => setQuickOpen(true)}>🔍</button>
+          <button className="btn-icon" title="设置" onClick={() => setSettingsOpen(true)}>⚙️</button>
+        </div>
+      </div>
+
+      <div className="main-area">
+        {/* 左侧栏 */}
+        {sidebarVisible && (
+          <div className="sidebar no-print">
+            <div className="sidebar-header">
+              <input
+                className="input"
+                placeholder="过滤文件名…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                style={{ height: 28 }}
+              />
+            </div>
+            <FileTree quickFilter={filter} />
+          </div>
+        )}
+
+        {/* 中部 */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+          <div className="toolbar no-print">
+            <button
+              className="btn-icon"
+              style={{ width: "auto", padding: "0 10px", fontSize: 12 }}
+              title="新建笔记（在当前目录）"
+              onClick={() => setNewNote("")}
+            >
+              ✚ 新建
+            </button>
+            <div className="sep" />
+            {([
+              ["edit", "✏️ 编辑"],
+              ["split", "◫ 分栏"],
+              ["preview", "👁 预览"],
+              ["mindmap", "🗺 导图"],
+              ["graph", "🕸 图谱"],
+            ] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                className={`btn-icon${viewMode === mode ? " active" : ""}`}
+                style={{ width: "auto", padding: "0 10px", fontSize: 12 }}
+                onClick={() => setStore({ viewMode: mode })}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="sep" />
+            <div className="title" title={currentRel ?? ""}>{currentRel ?? "未打开文件"}</div>
+          </div>
+
+          {externalChange && (
+            <div style={{ padding: "6px 14px", background: "var(--bg-active)", fontSize: 12, display: "flex", gap: 10, alignItems: "center" }}>
+              <span>📂 检测到文件在外部被修改</span>
+              <button className="btn" style={{ padding: "2px 10px" }} onClick={() => { void reloadCurrent(); setExternalChange(false); }}>重新加载</button>
+              <button className="btn" style={{ padding: "2px 10px" }} onClick={() => setExternalChange(false)}>忽略</button>
+            </div>
+          )}
+
+          {viewMode === "graph" ? (
+            <GraphView />
+          ) : viewMode === "mindmap" ? (
+            <MindmapView dark={resolved === "dark"} />
+          ) : (
+            <div className="editor-pane" style={{ flex: 1 }}>
+              {showEditor && (
+                <div className="pane" style={{ borderRight: showPreview ? "none" : undefined }}>
+                  {currentRel ? (
+                    <Editor notes={notesGetter} dark={resolved === "dark"} />
+                  ) : (
+                    <EmptyHint />
+                  )}
+                </div>
+              )}
+              {showEditor && showPreview && <div className="pane-divider no-print" />}
+              {showPreview && (
+                <div className="pane" style={{ overflowY: "auto" }}>
+                  {currentRel ? <Preview notes={notesGetter} dark={resolved === "dark"} /> : <EmptyHint />}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 右侧栏 */}
+        {rightVisible && (
+          <div className="right-panel no-print" style={{ width: rightWidth }}>
+            <div className="right-resizer no-print" onMouseDown={startRightResize} />
+            <div className="panel-tabs">
+              {([
+                ["outline", "大纲"],
+                ["backlinks", "链接"],
+                ["ai", "AI 助手"],
+              ] as const).map(([p, label]) => (
+                <button key={p} className={rightPanel === (p as RightPanel) ? "active" : ""} onClick={() => setStore({ rightPanel: p as RightPanel })}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {rightPanel === "outline" && <OutlinePanel onJump={jumpToLine} />}
+              {rightPanel === "backlinks" && <BacklinkPanel />}
+              {rightPanel === "ai" && <AiPanel />}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 状态栏 */}
+      <div className="statusbar no-print">
+        <span>{dirty ? "● 未保存（自动保存中…）" : "✓ 已保存"}</span>
+        <span>{wordCount} 字</span>
+        <span>{fmtSize(fileSize)}{largeFile ? " · 大文件模式" : ""}</span>
+        <span>模型：{config?.aiModel || "deepseek-v4-flash"}</span>
+        <div style={{ flex: 1 }} />
+        <span>⌘P 快速打开 · ⌘S 保存 · ⌘\ 侧栏</span>
+      </div>
+
+      {newNote !== null && (
+        <div className="quickopen-mask" onMouseDown={() => setNewNote(null)}>
+          <div className="quickopen" style={{ width: 420 }} onMouseDown={(e) => e.stopPropagation()}>
+            <input
+              autoFocus
+              className="input"
+              placeholder={`新建笔记于：${currentRel?.split("/").slice(0, -1).join("/") || "知识库根目录"}`}
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setNewNote(null);
+                if (e.key === "Enter") void createNewNote();
+              }}
+              style={{ userSelect: "text" }}
+            />
+          </div>
+        </div>
+      )}
+      {quickOpen && <QuickOpen onClose={() => setQuickOpen(false)} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+    </div>
+  );
+}
+
+function EmptyHint() {
+  return (
+    <div className="welcome">
+      <div style={{ fontSize: 40 }}>📝</div>
+      <div>从左侧选择或创建一篇笔记</div>
+      <div style={{ fontSize: 12, color: "var(--text-faint)" }}>⌘P 快速打开 · 粘贴图片自动归档 · [[链接]] 建立双链</div>
+    </div>
+  );
+}
+
+function WelcomeScreen() {
+  const selectVault = useStore((s) => s.selectVault);
+  const ref = useRef(false);
+  useEffect(() => {
+    if (ref.current) return;
+    ref.current = true;
+    // 首启自动引导选择知识库
+  }, []);
+  return (
+    <div className="welcome" style={{ height: "100vh" }}>
+      <div style={{ fontSize: 56 }}>🗂</div>
+      <div style={{ fontSize: 20, fontWeight: 600, color: "var(--text)" }}>欢迎使用 DSH Markdown</div>
+      <div style={{ maxWidth: 380, textAlign: "center", lineHeight: 1.8 }}>
+        本地优先的智能 Markdown 知识库。选择一个文件夹作为你的知识库，
+        笔记、附件、图片都会自动归类存放。
+      </div>
+      <button
+        className="btn primary"
+        style={{ padding: "10px 28px", fontSize: 15 }}
+        onClick={async () => {
+          try {
+            const { open } = await import("@tauri-apps/plugin-dialog");
+            const dir = await open({ directory: true, title: "选择或创建知识库目录" });
+            if (typeof dir === "string") await selectVault(dir);
+          } catch (e) {
+            alert(`打开目录选择框失败：${e}`);
+          }
+        }}
+      >
+        选择知识库目录
+      </button>
+      <div style={{ fontSize: 12, color: "var(--text-faint)" }}>
+        建议新建空目录，如 ~/Documents/dsh-notes
+      </div>
+    </div>
+  );
+}

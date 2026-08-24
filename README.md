@@ -1,25 +1,10 @@
 # DSH Markdown — 智能 Markdown 知识库
 
-**本地优先的 Markdown 知识库 · Apple Silicon 原生 · 安装包 4MB · 内存约 100MB · 集成 DeepSeek AI**
+**本地优先的 Markdown 知识库 · Apple Silicon 原生 · 集成 DeepSeek AI**
 
-先看它打开之后的样子：
+一个 macOS 上的 Markdown 知识库应用：双向链接、五种视图、思维导图、知识图谱、AI 助手、网页转笔记、截图转笔记。
 
 ![主界面](docs/manual/images/01-main.png)
-
-一个 macOS 上的 Markdown 知识库应用：双向链接、五种视图、思维导图、知识图谱、AI 助手、网页转笔记、截图转笔记，全都装在一个 4MB 的 DMG 里。同类 Electron 应用安装包普遍 200MB 上下——轻，是刻在架构里的。
-
-## 为什么做
-
-写笔记的人迟早撞上同一个问题：**笔记越攒越多，彼此却毫无关系。**
-
-想到一个点子，隐约记得和上周记的某条有关，翻了十分钟没翻到，只好再写一遍。截图躺在相册里，网页收藏在浏览器里，零散想法记在备忘录里——各自为政，互不相认。工具也换过一圈：有的太重，开一会儿风扇就呼呼转；有的把笔记锁在私有格式里，想搬家都难。
-
-DSH Markdown 把两件事想清楚了再做：
-
-- **笔记放哪**：你自己的文件夹。所有笔记都是纯 Markdown 文件，不锁定、不上云，整个知识库随时可以整体搬进 iCloud、Git 或另一台电脑，不用改一个字。
-- **笔记怎么连**：用 `[[笔记名]]` 把笔记连成网络，反向链接、关系图谱一应俱全。
-
-> **写得快、连得起来、找得回来、看得明白。**
 
 ## 功能速览
 
@@ -106,7 +91,7 @@ DSH Markdown 把两件事想清楚了再做：
 ## 🚀 快速开始
 
 ```bash
-git clone https://github.com/<你的用户名>/dsh-markdown.git
+git clone https://github.com/yueyezhufeng/dsh-markdown.git
 cd dsh-markdown
 npm install
 npm run tauri dev   # 首次全量编译 Rust，约 2–3 分钟

@@ -3,7 +3,11 @@ node_modules/
 dist/
 build/
 src-tauri/target/
-src-tauri/gen/schemas/
+src-tauri/gen/
+
+# 规划与过程文档（不属于发布内容）
+demo/
+docs/
 
 # 系统与编辑器
 .DS_Store

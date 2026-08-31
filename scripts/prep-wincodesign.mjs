@@ -42,6 +42,11 @@ function find7za() {
 }
 
 async function main() {
+  // winCodeSign 仅 Windows 打包需要；macOS/Linux 上跳过，避免无谓下载与 Rosetta/网络依赖
+  if (process.platform !== "win32") {
+    console.log("[prep-wincodesign] 非 Windows 平台，跳过（winCodeSign 仅 Windows 打包需要）");
+    return;
+  }
   if (usable()) {
     console.log("[prep-wincodesign] winCodeSign 缓存已就绪，跳过");
     return;

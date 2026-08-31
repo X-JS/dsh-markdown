@@ -26,3 +26,6 @@ docs/
 # Tauri 开发签名（如后续使用）
 *.p12
 *.mobileprovision
+
+.ua/
+.codegraph/

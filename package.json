@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "electron:dev": "node scripts/kill-port.mjs 1430 && vite --config vite.config.electron.ts",
-    "electron:build": "node scripts/prep-wincodesign.mjs && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json && vite build --config vite.config.electron.ts && electron-builder",
-    "electron:pack": "node scripts/prep-wincodesign.mjs && vite build --config vite.config.electron.ts && electron-builder --dir"
+    "electron:build": "node scripts/clean-electron.mjs && node scripts/prep-wincodesign.mjs && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json && vite build --config vite.config.electron.ts && electron-builder",
+    "electron:pack": "node scripts/clean-electron.mjs && node scripts/prep-wincodesign.mjs && vite build --config vite.config.electron.ts && electron-builder --dir"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",
@@ -40,7 +40,6 @@
     "prismjs": "^1.30.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "trash": "^7.2.0",
     "zustand": "^5.0.5"
   },
   "devDependencies": {

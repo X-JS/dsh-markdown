@@ -3,6 +3,7 @@ import path from "node:path";
 import fsNode from "node:fs";
 import https from "node:https";
 import http from "node:http";
+import { execFileSync } from "node:child_process";
 import { URL } from "node:url";
 
 const isDev = !app.isPackaged;
@@ -79,17 +80,22 @@ function registerFsHandlers(win: BrowserWindow) {
   const HIDDEN = new Set([".dsh", ".git", ".obsidian", ".DS_Store"]);
   function resolve(rel: string): string {
     if (!vaultPath) throw new Error("未设置知识库目录");
-    rel = rel.replace(/^\//, "");
+    rel = rel.replace(/^[/\\]+/, "");
     const joined = path.join(vaultPath, rel);
     const norm = joined.replace(/\\/g, "/");
-    if (!norm.startsWith(vaultPath.replace(/\\/g, "/"))) throw new Error("非法路径");
+    const base = vaultPath.replace(/\\/g, "/").replace(/\/+$/, "");
+    // 边界校验：必须等于 vault 本身或以 "vault/" 开头，防止 ../ 逃逸与前缀碰撞（如 Vault vs Vault2）
+    if (norm !== base && !norm.startsWith(base + "/")) throw new Error("非法路径");
     return norm;
   }
   function toRel(abs: string): string {
-    let r = abs.startsWith(vaultPath!) ? abs!.slice(vaultPath!.length) : abs;
-    return r.replace(/^[\\/]/, "").replace(/\\/g, "/");
+    return path.relative(vaultPath!, abs).replace(/\\/g, "/");
   }
-  function sanitize(n: string) { return n.replace(/[\/\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim(); }
+  function sanitize(n: string) {
+    // Windows 非法字符：\ / : * ? " < > |；macOS/Linux 仅禁 /（目录分隔符）与 NUL
+    const re = process.platform === "win32" ? /[\/\\:*?"<>|]/g : /[/\u0000]/g;
+    return n.replace(re, " ").replace(/\s+/g, " ").trim();
+  }
   function collectFiles(root: string, depth = 0): string[] {
     if (depth > 12) return [];
     let entries: fsNode.Dirent[];
@@ -217,11 +223,27 @@ function registerFsHandlers(win: BrowserWindow) {
     } catch (e) { evt.reply("fs:move_entry-reply", { error: String(e) }); }
   });
 
+  // 跨平台移入回收站（不依赖 trash 包：其随包分发的平台二进制在打包/asar 下无法正确定位）
+  function trashPath(abs: string): void {
+    if (process.platform === "darwin") {
+      // Finder 删除 → 移入废纸篓，自动处理同名冲突与跨卷移动；无需额外二进制
+      const script = `tell application "Finder" to delete POSIX file ${JSON.stringify(abs)}`;
+      execFileSync("osascript", ["-e", script], { timeout: 30000 });
+    } else if (process.platform === "win32") {
+      // PowerShell + Microsoft.VisualBasic：文件/目录均支持 SendToRecycleBin
+      const psEsc = abs.replace(/'/g, "''");
+      const ps = `Add-Type -AssemblyName Microsoft.VisualBasic; $p = '${psEsc}'; if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, 'OnlyErrorDialogs', 'SendToRecycleBin') } else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }`;
+      execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], { timeout: 60000, windowsHide: true });
+    } else {
+      // Linux：gio trash（无 gio 时由调用方回退 unlink）
+      execFileSync("gio", ["trash", abs], { timeout: 30000 });
+    }
+  }
+
   win.webContents.on("ipc-message", async (evt, ch, rel: string) => {
     if (ch !== "fs:delete_entry") return;
     try {
-      const trash = await import("trash");
-      await (trash as any).default(resolve(rel));
+      trashPath(resolve(rel));
       evt.reply("fs:delete_entry-reply", { ok: true });
     } catch {
       try { fsNode.unlinkSync(resolve(rel)); evt.reply("fs:delete_entry-reply", { ok: true }); }
@@ -304,8 +326,8 @@ function registerFsHandlers(win: BrowserWindow) {
       for (const d of ["attachments", "templates", ".dsh"]) fsNode.mkdirSync(path.join(filePath, d), { recursive: true });
       const welcome = path.join(filePath, "欢迎使用.md");
       if (!fsNode.existsSync(welcome)) {
-        const sample = fsNode.readdirSync(filePath);
-        if (sample.length === 0 || sample.every((e: any) => typeof e === "string" && e.startsWith("."))) {
+        const sample = fsNode.readdirSync(filePath, { withFileTypes: true });
+        if (sample.length === 0 || sample.every((e) => e.name.startsWith("."))) {
           fsNode.writeFileSync(welcome, "# 欢迎使用 DSH Markdown\n\n开始你的知识库之旅：\n\n- 双向链接：输入 [[ 引用另一篇笔记\n- 思维导图：工具栏切换「导图」视图\n- 流程图：\n\n```mermaid\nflowchart LR\n  A[想法] --> B[记录] --> C[知识库]\n```\n\n- 粘贴图片会自动归档到 attachments/年/月\n");
         }
       }
@@ -429,7 +451,9 @@ function registerFetchHandlers(win: BrowserWindow) {
   }
   function downloadBuf(url: string, timeoutMs = 20000): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      https.get(url, { headers: { "User-Agent": UA } }, (res) => {
+      const parsed = new URL(url);
+      const mod = parsed.protocol === "https:" ? https : http;
+      mod.get(url, { headers: { "User-Agent": UA } }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) { downloadBuf(res.headers.location, timeoutMs).then(resolve).catch(reject); return; }
         if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
         const chunks: Buffer[] = [];

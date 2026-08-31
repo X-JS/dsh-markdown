@@ -68,8 +68,8 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
           <div>
             <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>知识库目录（笔记、附件统一存放）</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <input className="input" value={vaultPath} onChange={(e) => { setVaultPath(e.target.value); setChangedVault(true); }} placeholder="~/Documents/dsh-notes" style={{ userSelect: "text" }} />
-              <button className="btn" onClick={() => void pickDir()}>选择…</button>
+              <input className="input" value={vaultPath} onChange={(e) => { setVaultPath(e.target.value); setChangedVault(true); }} placeholder="~/Documents/dsh-notes" style={{ flex: 1, minWidth: 0, userSelect: "text" }} />
+              <button className="btn" onClick={() => void pickDir()} style={{ whiteSpace: "nowrap", flexShrink: 0 }}>选择</button>
             </div>
           </div>
 

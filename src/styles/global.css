@@ -124,11 +124,6 @@ input, textarea, select { font: inherit; color: inherit; }
 }
 .titlebar-drag .no-drag { -webkit-app-region: no-drag; }
 
-/* Windows：窗口控制覆盖层（最小化/最大化/关闭）占据右上角，给其让位 */
-@media (display-mode: window-controls-overlay) {
-  .titlebar-drag { padding-right: env(titlebar-area-width); }
-}
-
 .main-area { display: flex; flex: 1; min-height: 0; }
 
 /* ===== 预览 markdown 排版 ===== */

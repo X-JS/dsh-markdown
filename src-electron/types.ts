@@ -3,6 +3,8 @@ export interface ElectronAPI {
   platform: string;
   getAppVersion: () => Promise<string>;
   getConfig: () => Promise<any>;
+  /** 通知主进程实际明暗主题，更新窗口控制按钮颜色 */
+  setTheme: (theme: string) => void;
   setConfig: (patch: any) => Promise<any>;
   ensureVault: (path: string) => Promise<void>;
   startWatch: (vaultPath?: string) => Promise<void>;

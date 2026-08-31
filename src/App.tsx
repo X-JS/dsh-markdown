@@ -58,9 +58,13 @@ export default function App() {
   // 主题
   const theme = config?.theme ?? "auto";
   const resolved = useMemo(() => resolveTheme(theme), [theme]);
+  const applyTheme = useCallback((t: "light" | "dark") => {
+    document.documentElement.dataset.theme = t;
+    (window as any).electronAPI?.setTheme?.(t);
+  }, []);
   useEffect(() => {
-    document.documentElement.dataset.theme = resolved;
-  }, [resolved]);
+    applyTheme(resolved);
+  }, [resolved, applyTheme]);
 
   // 初始化 + 系统主题变化监听
   useEffect(() => {
@@ -68,12 +72,12 @@ export default function App() {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
       if ((config?.theme ?? "auto") === "auto") {
-        document.documentElement.dataset.theme = resolveTheme("auto");
+        applyTheme(resolveTheme("auto"));
       }
     };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
-  }, [init]);
+  }, [init, config?.theme, applyTheme]);
 
   // 笔记列表缓存（补全 / wikilink 跳转用）
   useEffect(() => {
@@ -228,19 +232,27 @@ export default function App() {
 <div className="titlebar-drag" data-tauri-drag-region onMouseDown={dragWindow}>
           {isMac && <div style={{ width: 68 }} />}
           <div className="no-drag">
-<button className={`btn-icon${sidebarVisible ? " active" : ""}`} title={`侧栏 ${MOD}\\`} onClick={() => setStore({ sidebarVisible: !sidebarVisible })}>☰</button>
+            <button className={`btn-icon${sidebarVisible ? " active" : ""}`} title={`侧栏 ${MOD}\\`} onClick={() => setStore({ sidebarVisible: !sidebarVisible })}>☰</button>
             <button className={`btn-icon${rightVisible ? " active" : ""}`} title="右侧面板" onClick={() => setStore({ rightVisible: !rightVisible })} style={{ marginLeft: 2 }}>◫</button>
+            {!isMac && (
+              <>
+                <button className="btn-icon" title={`快速打开 ${MOD}P`} onClick={() => setQuickOpen(true)} style={{ marginLeft: 2 }}>🔍</button>
+                <button className="btn-icon" title="设置" onClick={() => setSettingsOpen(true)} style={{ marginLeft: 2 }}>⚙️</button>
+              </>
+            )}
+          </div>
+          <div style={{ flex: 1 }} />
+          <div className="no-drag" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+            {currentRel ? `${currentRel.split("/").pop()}${dirty ? " •" : ""}` : "MarkdownX"}
+          </div>
+          <div style={{ flex: 1 }} />
+          {isMac && (
+            <div className="no-drag">
+              <button className="btn-icon" title={`快速打开 ${MOD}P`} onClick={() => setQuickOpen(true)}>🔍</button>
+              <button className="btn-icon" title="设置" onClick={() => setSettingsOpen(true)}>⚙️</button>
+            </div>
+          )}
         </div>
-        <div style={{ flex: 1 }} />
-        <div className="no-drag" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-          {currentRel ? `${currentRel.split("/").pop()}${dirty ? " •" : ""}` : "MarkdownX"}
-        </div>
-        <div style={{ flex: 1 }} />
-        <div className="no-drag">
-          <button className="btn-icon" title={`快速打开 ${MOD}P`} onClick={() => setQuickOpen(true)}>🔍</button>
-          <button className="btn-icon" title="设置" onClick={() => setSettingsOpen(true)}>⚙️</button>
-        </div>
-      </div>
 
       <div className="main-area">
         {/* 左侧栏 */}

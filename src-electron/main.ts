@@ -37,11 +37,16 @@ function saveConfig(cfg: any) {
 }
 
 function createWindow(): BrowserWindow {
+  const dark = appConfig.theme === "dark";
   const win = new BrowserWindow({
     width: 1360, height: 860, minWidth: 960, minHeight: 600,
-    backgroundColor: "#f7f8fa",
+    backgroundColor: dark ? "#23262b" : "#f7f8fa",
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#f7f8fa", symbolColor: "#333", height: 38 },
+    titleBarOverlay: {
+      color: dark ? "#23262b" : "#f7f8fa",
+      symbolColor: dark ? "#9aa0a8" : "#333",
+      height: 38,
+    },
     trafficLightPosition: { x: 12, y: 10 },
     show: false,
     webPreferences: {
@@ -586,6 +591,17 @@ function setVault(p: string | null) {
 }
 
 ipcMain.handle("config:get", () => appConfig);
+
+// 渲染进程告知实际明暗主题，动态更新窗口控制按钮颜色（Windows WCO / macOS 红绿灯）
+ipcMain.on("window:set_theme", (_e, theme: string) => {
+  if (!mainWindow) return;
+  const isDark = theme === "dark";
+  mainWindow.setTitleBarOverlay({
+    color: isDark ? "#23262b" : "#f7f8fa",
+    symbolColor: isDark ? "#9aa0a8" : "#333",
+    height: 38,
+  });
+});
 
 ipcMain.handle("config:set", (_e, patch: any) => {
   if (patch?.vaultPath !== undefined) { appConfig.vaultPath = patch.vaultPath || null; setVault(appConfig.vaultPath); }

@@ -8,6 +8,8 @@ const api: ElectronAPI = {
 
   getConfig: () => ipcRenderer.invoke("config:get"),
 
+  setTheme: (theme: string) => ipcRenderer.send("window:set_theme", theme),
+
   setConfig: (patch: any) => ipcRenderer.invoke("config:set", patch),
 
   ensureVault: (p: string) =>

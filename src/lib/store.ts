@@ -27,6 +27,8 @@ interface AppState {
   rightVisible: boolean;
   /** 右侧栏宽度（可拖拽调整，240–560） */
   rightWidth: number;
+  /** 侧栏宽度（可拖拽调整，180–420） */
+  sidebarWidth: number;
   /** 文件树刷新信号（递增触发重载） */
   treeVersion: number;
   linkIndex: LinkEntry[];
@@ -67,6 +69,7 @@ export const useStore = create<AppState>((set, get) => ({
   sidebarVisible: true,
   rightVisible: true,
   rightWidth: Number(localStorage.getItem("dsh.rightWidth")) || 300,
+  sidebarWidth: Number(localStorage.getItem("dsh.sidebarWidth")) || 250,
   treeVersion: 0,
   linkIndex: [],
   linkVersion: 0,

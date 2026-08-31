@@ -1,9 +1,11 @@
 # 构建产物
 node_modules/
 dist/
+dist-electron/
 build/
 src-tauri/target/
 src-tauri/gen/
+release/
 
 # 规划与过程文档（不属于发布内容）
 # 例外：README 引用的 docs/manual/images/*.png 截图以 git add -f 纳入版本管理

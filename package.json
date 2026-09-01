@@ -66,6 +66,10 @@
       "dist-electron/**",
       "package.json"
     ],
+    "fileAssociations": [
+      { "ext": "md", "name": "Markdown 文档", "description": "Markdown 文档（MarkdownX）", "role": "Editor" },
+      { "ext": "markdown", "name": "Markdown 文档", "description": "Markdown 文档（MarkdownX）", "role": "Editor" }
+    ],
     "directories": {
       "output": "release"
     },

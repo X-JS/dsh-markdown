@@ -264,6 +264,20 @@ const api: ElectronAPI = {
     ipcRenderer.on(chan, handler);
     return () => ipcRenderer.off(chan, handler);
   },
+
+  readExternalFile: (absPath: string) => ipcRenderer.invoke("fs:read_external", absPath),
+
+  writeExternalFile: (absPath: string, content: string) => ipcRenderer.invoke("fs:write_external", absPath, content),
+
+  getPendingOpens: () => ipcRenderer.invoke("fs:get_pending_opens"),
+
+  openFileReady: () => { ipcRenderer.send("open-file:ready"); },
+
+  onOpenFileRequest: (callback: (absPath: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, p: string) => callback(p);
+    ipcRenderer.on("open-file:request", handler);
+    return () => ipcRenderer.removeListener("open-file:request", handler);
+  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", api);

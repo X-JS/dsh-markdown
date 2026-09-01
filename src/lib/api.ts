@@ -144,6 +144,20 @@ export const api = {
 
   aiChatDelete: (id: string): Promise<void> =>
     isElectron() ? ensureApi().aiChatDelete(id) : tauriInvoke<void>("ai_chat_delete", { id }),
+
+  readExternalFile: (absPath: string): Promise<ReadResult> =>
+    isElectron() ? ensureApi().readExternalFile(absPath) : Promise.reject(new Error("仅 Electron 支持外部文件")),
+
+  writeExternalFile: (absPath: string, content: string): Promise<void> =>
+    isElectron() ? ensureApi().writeExternalFile(absPath, content) : Promise.reject(new Error("仅 Electron 支持外部文件")),
+
+  getPendingOpens: (): Promise<string[]> =>
+    isElectron() ? ensureApi().getPendingOpens() : Promise.resolve([]),
+
+  openFileReady: (): void => { if (isElectron()) ensureApi().openFileReady(); },
+
+  onOpenFileRequest: (callback: (absPath: string) => void): (() => void) =>
+    isElectron() ? ensureApi().onOpenFileRequest(callback) : () => {},
 };
 
 /**

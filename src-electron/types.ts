@@ -36,6 +36,16 @@ export interface ElectronAPI {
   convertFileSrc: (absPath: string) => string;
   fsChangeSubscribe: (callback: () => void) => () => void;
   aiChunkSubscribe: (requestId: string, callback: (chunk: any) => void) => () => void;
+  /** 读取外部文档（系统唤起打开，绕过 vault 边界，绝对路径） */
+  readExternalFile: (absPath: string) => Promise<any>;
+  /** 写回外部文档（原子写入原路径） */
+  writeExternalFile: (absPath: string, content: string) => Promise<any>;
+  /** 拉取启动早期未能推送的待打开文件列表 */
+  getPendingOpens: () => Promise<string[]>;
+  /** 渲染进程已就绪（先订阅 open-file:request 再发送），主进程可安全推送 */
+  openFileReady: () => void;
+  /** 订阅系统打开文件请求（主进程 → 渲染进程推送） */
+  onOpenFileRequest: (callback: (absPath: string) => void) => () => void;
 }
 
 declare global {

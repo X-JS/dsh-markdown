@@ -388,6 +388,26 @@ input, textarea, select { font: inherit; color: inherit; }
   white-space: nowrap;
   max-width: 40%;
 }
+/* 打开的当前文件：整组靠右（margin-left:auto），文件名用满剩余空间，放不下才省略 */
+.toolbar .file-title {
+  margin-left: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.toolbar .file-title .title {
+  margin: 0;
+  max-width: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* 分栏 */
 .editor-pane { display: flex; flex: 1; min-width: 0; min-height: 0; }

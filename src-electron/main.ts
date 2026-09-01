@@ -72,6 +72,7 @@ function createWindow(): BrowserWindow {
     win.loadFile(path.join(DIST_DIR, "index.html"));
   }
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
+  win.webContents.on("did-finish-load", () => tryFlushOpenRequests());
   return win;
 }
 
@@ -608,6 +609,41 @@ function registerAiHandlers(win: BrowserWindow) {
 // --- Config handlers + app bootstrap ---
 let mainWindow: BrowserWindow | null = null;
 
+// ─── 系统"打开文件"请求（Windows 双击 .md / macOS open-file）─────────────
+let rendererOpenReady = false;
+const pendingOpen: string[] = [];
+
+// 从命令行参数里找出真实文件：跳过 -xx 选项与开发模式参数，只认存在的 .md/.markdown/.txt 文件
+function extractFileArg(argv: string[]): string | null {
+  for (const raw of argv) {
+    if (!raw || raw.startsWith("-")) continue;
+    let p: string;
+    try { p = path.resolve(raw); } catch { continue; }
+    try {
+      if (!fsNode.statSync(p).isFile()) continue;
+      const ext = path.extname(p).slice(1).toLowerCase();
+      if (ext !== "md" && ext !== "markdown" && ext !== "txt") continue;
+      return p;
+    } catch { /* 非文件参数 */ }
+  }
+  return null;
+}
+
+function queueOpenFile(absPath: string | null) {
+  if (!absPath) return;
+  if (!pendingOpen.includes(absPath)) pendingOpen.push(absPath);
+  tryFlushOpenRequests();
+}
+
+// 仅当渲染进程已订阅（发送过 open-file:ready）且窗口加载完成时才推送，避免事件丢失
+function tryFlushOpenRequests() {
+  if (!rendererOpenReady || !mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoading()) return;
+  while (pendingOpen.length) mainWindow.webContents.send("open-file:request", pendingOpen.shift());
+}
+
+// macOS：Finder 双击 / 拖到 Dock 图标触发，可能在 ready 前到达 → 必须在顶层注册
+app.on("open-file", (e, p) => { e.preventDefault(); queueOpenFile(path.resolve(p)); });
+
 // 同步 vault 路径到各 handler
 function setVault(p: string | null) {
   vaultPath = p;
@@ -665,7 +701,10 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_e, commandLine: string[]) => {
+    // 应用已在运行时再次双击 .md：从第二实例命令行里取出文件并转发
+    const f = extractFileArg(commandLine);
+    if (f) queueOpenFile(f);
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -676,6 +715,15 @@ if (!gotLock) {
     appConfig = loadConfig();
     setVault(appConfig.vaultPath);
     mainWindow = createWindow();
+
+    // 启动参数可能携带被双击的文件（Windows/Linux 应用未运行时在资源管理器双击）
+    const launchFile = extractFileArg(process.argv);
+    if (launchFile) queueOpenFile(launchFile);
+
+    // 渲染进程就绪：它先订阅 open-file:request，再发送此消息，之后主进程推送才不丢事件
+    ipcMain.on("open-file:ready", () => { rendererOpenReady = true; tryFlushOpenRequests(); });
+    // 启动早期窗口未就绪时的兜底：渲染进程主动拉取待打开列表
+    ipcMain.handle("fs:get_pending_opens", () => pendingOpen.splice(0));
 
     // 注册各 handler
     registerFsHandlers(mainWindow);
@@ -751,4 +799,32 @@ ipcMain.handle("dialog:pick_directory", async () => {
   });
   if (result.canceled || !result.filePaths.length) return null;
   return result.filePaths[0];
+});
+
+// ─── 外部文档（系统唤起打开：不在 vault 内，可编辑并写回原绝对路径）────────
+const EXTERNAL_DOC_EXTS = new Set(["md", "markdown", "txt"]);
+function assertExternalDoc(absPath: string): string {
+  const p = path.resolve(String(absPath || ""));
+  const ext = path.extname(p).slice(1).toLowerCase();
+  if (!EXTERNAL_DOC_EXTS.has(ext)) throw new Error("不支持的文件类型");
+  return p;
+}
+
+ipcMain.handle("fs:read_external", (_e, absPath: string) => {
+  const p = assertExternalDoc(absPath);
+  const st = fsNode.statSync(p);
+  if (!st.isFile()) throw new Error("不是文件");
+  const buf = fsNode.readFileSync(p);
+  return { content: buf.toString("utf-8"), size: st.size, modified: Math.floor(st.mtimeMs / 1000) };
+});
+
+ipcMain.handle("fs:write_external", async (_e, absPath: string, content: string) => {
+  const p = assertExternalDoc(absPath);
+  const st = fsNode.statSync(p);
+  if (!st.isFile()) throw new Error("不是文件");
+  // 原子写入：先写 .tmp 再重命名，与 vault 内文件保存方式一致
+  const tmp = p + ".tmp";
+  await fsNode.promises.writeFile(tmp, content, "utf-8");
+  await fsNode.promises.rename(tmp, p);
+  return { ok: true };
 });

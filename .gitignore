@@ -18,6 +18,7 @@ docs/
 .idea/
 .vscode/
 *.iml
+.smoke-test/
 
 # 本地环境
 .env

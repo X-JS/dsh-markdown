@@ -8,6 +8,13 @@ export default defineConfig({
   server: {
     port: 1430,
     strictPort: true,
+    proxy: {
+      // 浏览器 Web 版：/api 转发到独立数据后端，规避 CORS
+      "/api": {
+        target: process.env.VITE_API_PROXY || "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
     watch: {
       ignored: ["**/src-tauri/**"],
     },

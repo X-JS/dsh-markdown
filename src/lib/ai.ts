@@ -1,4 +1,5 @@
 import type { Config } from "./types";
+import { isElectron, isWeb } from "./runtime";
 
 /**
  * 流式 AI 对话（跨平台）。
@@ -32,7 +33,7 @@ export interface AiChunk {
 
 let lastRequestId = 0;
 
-function isElectron(): boolean {
+function isElectronDup(): boolean {
   return typeof window !== "undefined" && !!(window as any).electronAPI;
 }
 
@@ -63,7 +64,7 @@ export async function aiChat(
       else reject(new Error(err || "AI 请求失败"));
     };
 
-    if (isElectron()) {
+    if (isElectronDup()) {
       const api = (window as any).electronAPI;
       const unsub = api.aiChunkSubscribe(requestId, (chunk: AiChunk) => {
         if (chunk.error) return finish(false, chunk.error);
@@ -96,6 +97,12 @@ export async function aiChat(
       // done 时清理计时器（在 finish 中统一处理）
       const _origFinish = finish;
       (finish as unknown as { _timer?: ReturnType<typeof setTimeout> })._timer = timer;
+      return;
+    }
+
+    // 浏览器 Web 版：本阶段后端不含 AI，直接拒绝
+    if (isWeb()) {
+      finish(false, "浏览器版暂不支持 AI 对话");
       return;
     }
 

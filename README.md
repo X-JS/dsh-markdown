@@ -6,6 +6,8 @@
 
 新增 electron 支持，构建Windows环境下应用。
 
+新增 web 支持，TODO: 后端服务
+
 ![主界面](docs/manual/images/01-main.png)
 
 ## 功能速览

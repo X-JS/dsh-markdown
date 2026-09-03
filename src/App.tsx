@@ -12,7 +12,11 @@ import BacklinkPanel from "./components/BacklinkPanel";
 import AiPanel from "./components/AiPanel";
 import QuickOpen from "./components/QuickOpen";
 import SettingsDialog, { resolveTheme } from "./components/SettingsDialog";
+import { WebLogin, WebVaultPicker } from "./components/WebAuth";
 import { isMac, MOD } from "./lib/platform";
+import { isWeb } from "./lib/runtime";
+import { setUnauthorizedHandler, getToken, logout } from "./lib/http";
+import { DEMO_AUTHENTICATED, DEMO_AUTO_VAULT } from "./lib/browser-api";
 import type { ScrollSyncHandle } from "./lib/scroll-sync";
 
 export default function App() {
@@ -45,6 +49,19 @@ export default function App() {
   const [filter, setFilter] = useState("");
   const [notes, setNotes] = useState<NoteMetaItem[]>([]);
   const [externalChange, setExternalChange] = useState(false);
+
+  // 浏览器 Web 端到端：登录 → 选库 → 主界面
+  const web = isWeb();
+  // 演示模式：跳过登录页直接进入；否则按 token 是否存在决定
+  const [authed, setAuthed] = useState(() => !web || DEMO_AUTHENTICATED || !!getToken());
+
+  // 401 → 强制回到登录态（token 已由 http.ts 清空）
+  useEffect(() => {
+    if (!web) return;
+    setUnauthorizedHandler(() => {
+      setAuthed(false);
+    });
+  }, [web]);
 
   // 分栏滚动联动：编辑器 ↔ 预览
   const editorSyncRef = useRef<ScrollSyncHandle | null>(null);
@@ -257,6 +274,22 @@ export default function App() {
   const fmtSize = (n: number) =>
     n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : n > 1024 ? `${(n / 1024).toFixed(0)} KB` : `${n} B`;
 
+  // 浏览器 Web：先登录，再选库
+  if (web && !authed) {
+    return (
+      <div className="app-shell">
+        <WebLogin onAuthed={() => setAuthed(true)} />
+      </div>
+    );
+  }
+  if (web && authed && !vaultReady) {
+    return (
+      <div className="app-shell">
+        <WebVaultPicker onPicked={() => void refreshLinks()} />
+      </div>
+    );
+  }
+
   if (!vaultReady) {
     return (
       <div className="app-shell">
@@ -293,6 +326,29 @@ export default function App() {
             <div className="no-drag">
               <button className="btn-icon" title={`快速打开 ${MOD}P`} onClick={() => setQuickOpen(true)}>🔍</button>
               <button className="btn-icon" title="设置" onClick={() => setSettingsOpen(true)}>⚙️</button>
+            </div>
+          )}
+          {web && (
+            <div className="no-drag" style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 6 }}>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)" }} title="当前用户">👤 admin</span>
+              <button
+                className="btn-icon"
+                style={{
+                  width: 21,
+                  height: 21,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(128, 128, 128, 0.45)",
+                  background: "rgba(128, 128, 128, 0.08)",
+                }}
+                title="退出登录"
+                onClick={() => logout()}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M10 17l5-5-5-5" />
+                  <path d="M15 12H3" />
+                  <path d="M13 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" />
+                </svg>
+              </button>
             </div>
           )}
         </div>
@@ -417,9 +473,9 @@ export default function App() {
               {([
                 ["outline", "大纲"],
                 ["backlinks", "链接"],
-                ["ai", "AI 助手"],
-              ] as const).map(([p, label]) => (
-                <button key={p} className={rightPanel === (p as RightPanel) ? "active" : ""} onClick={() => setStore({ rightPanel: p as RightPanel })}>
+                ...(web ? [] : ([["ai", "AI 助手"]] as [string, string][])),
+              ] as [RightPanel, string][]).map(([p, label]) => (
+                <button key={p} className={rightPanel === p ? "active" : ""} onClick={() => setStore({ rightPanel: p })}>
                   {label}
                 </button>
               ))}
@@ -427,7 +483,7 @@ export default function App() {
             <div style={{ flex: 1, minHeight: 0 }}>
               {rightPanel === "outline" && <OutlinePanel onJump={jumpToLine} />}
               {rightPanel === "backlinks" && <BacklinkPanel />}
-              {rightPanel === "ai" && <AiPanel />}
+              {rightPanel === "ai" && !web && <AiPanel />}
             </div>
           </div>
         )}

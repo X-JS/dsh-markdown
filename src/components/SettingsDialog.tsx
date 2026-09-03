@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useStore } from "../lib/store";
 import type { Config } from "../lib/types";
+import { isWeb } from "../lib/runtime";
 
 /** 设置：知识库路径 / DeepSeek API / 主题 */
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
+  const web = isWeb();
   const config = useStore((s) => s.config);
   const selectVault = useStore((s) => s.selectVault);
   const setStore = useStore((s) => s.set);
@@ -37,15 +39,12 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const save = async () => {
     setSaving(true);
     try {
-      if (changedVault && vaultPath) {
+      if (!web && changedVault && vaultPath) {
         await selectVault(vaultPath);
       }
       const { api } = await import("../lib/api");
       const cfg: Config = await api.setConfig({
-        aiBaseUrl: baseUrl,
-        aiModel: model,
-        aiVisionModel: visionModel,
-        aiApiKey: apiKey,
+        ...(!web ? { aiBaseUrl: baseUrl, aiModel: model, aiVisionModel: visionModel, aiApiKey: apiKey } : {}),
         theme,
       });
       setStore({ config: cfg });
@@ -65,34 +64,40 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       >
         <div style={{ padding: "18px 20px 0", fontSize: 15, fontWeight: 600 }}>设置</div>
         <div style={{ padding: "12px 20px 18px", display: "flex", flexDirection: "column", gap: 14, maxHeight: "70vh", overflowY: "auto" }}>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>知识库目录（笔记、附件统一存放）</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="input" value={vaultPath} onChange={(e) => { setVaultPath(e.target.value); setChangedVault(true); }} placeholder="~/Documents/dsh-notes" style={{ flex: 1, minWidth: 0, userSelect: "text" }} />
-              <button className="btn" onClick={() => void pickDir()} style={{ whiteSpace: "nowrap", flexShrink: 0 }}>选择</button>
+          {!web && (
+            <div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>知识库目录（笔记、附件统一存放）</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input className="input" value={vaultPath} onChange={(e) => { setVaultPath(e.target.value); setChangedVault(true); }} placeholder="~/Documents/dsh-notes" style={{ flex: 1, minWidth: 0, userSelect: "text" }} />
+                <button className="btn" onClick={() => void pickDir()} style={{ whiteSpace: "nowrap", flexShrink: 0 }}>选择</button>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div style={{ height: 1, background: "var(--border)" }} />
+          {!web && (
+            <>
+              <div style={{ height: 1, background: "var(--border)" }} />
 
-          <div style={{ fontSize: 13, fontWeight: 600 }}>DeepSeek AI</div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>API 地址（OpenAI 兼容）</div>
-            <input className="input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} style={{ userSelect: "text" }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>模型</div>
-            <input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="deepseek-v4-flash" style={{ userSelect: "text" }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>视觉模型（图片理解 / 图片转笔记）</div>
-            <input className="input" value={visionModel} onChange={(e) => setVisionModel(e.target.value)} placeholder="deepseek-v4-flash-vision-exp" style={{ userSelect: "text" }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>API Key</div>
-            <input className="input" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" style={{ userSelect: "text" }} />
-            <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 4 }}>仅保存在本机（~/Library/Application Support/dsh-markdown/config.json）</div>
-          </div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>DeepSeek AI</div>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>API 地址（OpenAI 兼容）</div>
+                <input className="input" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} style={{ userSelect: "text" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>模型</div>
+                <input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="deepseek-v4-flash" style={{ userSelect: "text" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>视觉模型（图片理解 / 图片转笔记）</div>
+                <input className="input" value={visionModel} onChange={(e) => setVisionModel(e.target.value)} placeholder="deepseek-v4-flash-vision-exp" style={{ userSelect: "text" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>API Key</div>
+                <input className="input" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" style={{ userSelect: "text" }} />
+                <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 4 }}>仅保存在本机（~/Library/Application Support/dsh-markdown/config.json）</div>
+              </div>
+            </>
+          )}
 
           <div style={{ height: 1, background: "var(--border)" }} />
 

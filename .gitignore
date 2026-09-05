@@ -32,3 +32,5 @@ docs/*
 
 .ua/
 .codegraph/
+
+package-lock.json
